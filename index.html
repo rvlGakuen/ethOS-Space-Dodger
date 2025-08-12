@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Space Dodger – Welcome & Right Menu</title>
+<style>
+  /* full-window background */
+  body{margin:0;height:100vh;background:url('bg.jpg') no-repeat center center fixed;background-size:cover;font-family:monospace;color:#0f0;display:flex;justify-content:center;align-items:center;}
+  /* welcome box center */
+  #welcome{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;background:rgba(0,0,0,0.85);}
+  #welcome button, #menu button{
+    padding:12px 30px;margin:8px 0;font-size:20px;cursor:pointer;background:#111;color:#0f0;border:1px solid #0f0;border-radius:4px;
+  }
+  #welcome button:hover, #menu button:hover{background:#0f0;color:#000;}
+  /* right-side difficulty menu */
+  #menu{
+    position:absolute;top:50%;transform:translateY(-50%);display:none;flex-direction:column;gap:8px;
+  }
+  /* game canvas & back button */
+  canvas{display:none;border:2px solid #0f0;box-shadow:0 0 20px #0f0;}
+  #backBtn{display:none;position:absolute;top:50px;left:10px;padding:6px 14px;font-size:16px;cursor:pointer;background:#111;color:#0f0;border:1px solid #0f0;border-radius:4px;}
+  #backBtn:hover{background:#0f0;color:#000;}
+  #ui{position:absolute;top:10px;left:10px;font-size:20px;}
+</style>
+</head>
+<body>
+
+<!-- Welcome screen -->
+<div id="welcome">
+  <h1>Eth OS SPACE DODGER</h1>
+  <button onclick="showMenu()">PLAY</button>
+</div>
+
+<!-- Difficulty selector (right margin) -->
+<div id="menu">
+  <h2>Select Difficulty</h2>
+  <button onclick="startGame('easy')">Easy</button>
+  <button onclick="startGame('normal')">Normal</button>
+  <button onclick="startGame('hard')">Hard</button>
+  <button onclick="startGame('brutal')">Brutal</button>
+</div>
+
+
+<!-- Game elements -->
+<div id="ui" style="display:none;">Score: <span id="score">0</span></div>
+<canvas id="game" width="400" height="600"></canvas>
+<button id="backBtn" onclick="goBack()">BACK</button>
+
+<script>
+/* ---------- Difficulty settings ---------- */
+const DIFFICULTY = {
+  easy   : { playerSpeed: 200, enemySpeedMin:  80, enemySpeedMax: 120, spawnInterval: 1.0 },
+  normal : { playerSpeed: 300, enemySpeedMin: 100, enemySpeedMax: 180, spawnInterval: 0.7 },
+  hard   : { playerSpeed: 380, enemySpeedMin: 180, enemySpeedMax: 280, spawnInterval: 0.45 },
+  brutal : { playerSpeed: 450, enemySpeedMin: 300, enemySpeedMax: 450, spawnInterval: 0.25 }
+};
+
+let cfg;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const backBtn = document.getElementById('backBtn');
+let score = 0, lastTime = 0, enemySpawnTimer = 0, flashTimer = 0, gibTextTimer = 0, reqId;
+
+const playerImg = new Image();
+playerImg.src = 'player.png';
+
+const player = {
+  x: canvas.width / 2, y: canvas.height - 50, w: 60, h: 60,
+  draw() { ctx.drawImage(playerImg, this.x - this.w/2, this.y - this.h/2, this.w, this.h); },
+  update(dt, keys) {
+    if (keys.ArrowLeft)  this.x -= cfg.playerSpeed * dt;
+    if (keys.ArrowRight) this.x += cfg.playerSpeed * dt;
+    if (keys.ArrowUp)    this.y -= cfg.playerSpeed * dt;
+    if (keys.ArrowDown)  this.y += cfg.playerSpeed * dt;
+    this.x = Math.max(this.w/2, Math.min(canvas.width - this.w/2, this.x));
+    this.y = Math.max(this.h/2, Math.min(canvas.height - this.h/2, this.y));
+  }
+};
+
+const enemies = [];
+function spawnEnemy() {
+  enemies.push({
+    x: Math.random() * canvas.width, y: -20, r: 15,
+    speed: cfg.enemySpeedMin + Math.random() * (cfg.enemySpeedMax - cfg.enemySpeedMin)
+  });
+}
+
+const stars = Array.from({length: 120}, () => ({
+  x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+  size: Math.random() * 2 + 1, speed: 20 + Math.random() * 80
+}));
+
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup',   e => keys[e.code] = false);
+
+function collides(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.hypot(dx, dy) < b.r + Math.min(a.w, a.h)/2;
+}
+
+function gameLoop(ts) {
+  const dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+  update(dt);
+  draw();
+  reqId = requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+  player.update(dt, keys);
+  enemySpawnTimer -= dt;
+  if (enemySpawnTimer <= 0) { spawnEnemy(); enemySpawnTimer = cfg.spawnInterval * (0.8 + Math.random() * 0.4); }
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.y += e.speed * dt;
+    if (e.y > canvas.height + e.r) { enemies.splice(i, 1); continue; }
+    if (collides(player, e)) { flashTimer = 0.2; gibTextTimer = 1.0; enemies.splice(i, 1); score = 0; }
+  }
+  stars.forEach(s => { s.y += s.speed * dt; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
+  if (flashTimer   > 0) flashTimer   -= dt;
+  if (gibTextTimer > 0) gibTextTimer -= dt;
+  score += dt * 100;
+  scoreEl.textContent = Math.floor(score);
+}
+
+function draw() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (flashTimer > 0) { ctx.fillStyle = `rgba(255,0,0,${flashTimer*4})`; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  ctx.fillStyle = '#fff'; stars.forEach(s => { ctx.beginPath(); ctx.arc(s.x,s.y,s.size,0,Math.PI*2); ctx.fill(); });
+  player.draw();
+  ctx.fillStyle = '#f33'; enemies.forEach(e => { ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill(); });
+  if (gibTextTimer > 0) {
+    const show = Math.sin(Date.now() * 0.02) > 0;
+    if (show) { ctx.fillStyle = '#fff'; ctx.font = '32px monospace'; ctx.textAlign = 'center'; ctx.fillText('GIB CODE PLS', canvas.width/2, canvas.height/2); }
+  }
+}
+
+function showMenu() {
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('menu').style.display = 'flex';
+}
+
+function startGame(level) {
+  cfg = DIFFICULTY[level];
+  document.getElementById('menu').style.display = 'none';
+  document.getElementById('ui').style.display   = 'block';
+  canvas.style.display  = 'block';
+  backBtn.style.display = 'inline-block';
+  lastTime = performance.now();
+  enemySpawnTimer = cfg.spawnInterval;
+  player.x = canvas.width/2;
+  player.y = canvas.height - 50;
+  enemies.length = 0;
+  score = 0;
+  reqId = requestAnimationFrame(gameLoop);
+}
+
+function goBack() {
+  cancelAnimationFrame(reqId);
+  document.getElementById('menu').style.display   = 'flex';   // show difficulty
+  document.getElementById('welcome').style.display = 'none';  // hide welcome
+  document.getElementById('ui').style.display      = 'none';
+  canvas.style.display  = 'none';
+  backBtn.style.display = 'none';
+  enemies.length = 0;
+  score = 0;
+}
+
+</script>
+</body>
+</html>
